@@ -1,84 +1,76 @@
-# main.py
 import os
-import requests
+import time
 from pyrogram import Client, filters
-from pyrogram.types import Message
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
-# Environment variables
-API_ID = os.environ.get("API_ID")
-API_HASH = os.environ.get("API_HASH")
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
+# Configure Pyrogram Bot
+app = Client(
+    "iloveimg_bot",
+    api_id=os.environ["API_ID"],
+    api_hash=os.environ["API_HASH"],
+    bot_token=os.environ["BOT_TOKEN"]
+)
 
-app = Client("iloveimg_upscale_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+# Configure Selenium (Koyeb needs headless setup)
+CHROME_OPTIONS = webdriver.ChromeOptions()
+CHROME_OPTIONS.add_argument("--headless")
+CHROME_OPTIONS.add_argument("--disable-gpu")
+CHROME_OPTIONS.add_argument("--no-sandbox")
 
-def process_image(image_path: str, scale: int = 4) -> str:
-    """Process image through iloveimg's upscale API"""
-    base_url = "https://api.iloveimg.com/v1"
-    
-    with requests.Session() as session:
+def automate_iloveimg(image_path: str):
+    driver = webdriver.Chrome(options=CHROME_OPTIONS)
+    try:
+        driver.get("https://www.iloveimg.com/upscale-image")
+        
         # Upload image
-        upload_url = f"{base_url}/upload"
-        files = {"file": open(image_path, "rb")}
-        response = session.post(upload_url, files=files)
-        server_filename = response.json()["server_filename"]
-
+        upload_btn = WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "input[type='file']"))
+        )
+        upload_btn.send_keys(image_path)
+        
+        # Select 4x option
+        WebDriverWait(driver, 20).until(
+            EC.element_to_be_clickable((By.XPATH, "//button[contains(.,'4×')]"))
+        ).click()
+        
         # Start processing
-        process_url = f"{base_url}/upscale"
-        payload = {
-            "server_filename": server_filename,
-            "scale": scale,
-            "output_format": "webp"
-        }
-        response = session.post(process_url, json=payload)
-        task_id = response.json()["task"]
-
-        # Wait for processing
-        while True:
-            status_url = f"{base_url}/task/{task_id}"
-            status = session.get(status_url).json()
-            if status["status"] == "success":
-                break
-
-        # Get download URL
-        return f"{base_url}/download/{task_id}"
+        WebDriverWait(driver, 20).until(
+            EC.element_to_be_clickable((By.XPATH, "//button[contains(.,'Upscale Image')]"))
+        ).click()
+        
+        # Wait for download button
+        download_btn = WebDriverWait(driver, 120).until(
+            EC.element_to_be_clickable((By.XPATH, "//a[contains(.,'Download')]"))
+        )
+        return download_btn.get_attribute("href")
+    finally:
+        driver.quit()
 
 @app.on_message(filters.command("upscale") & filters.photo)
-async def upscale_handler(client: Client, message: Message):
-    msg = await message.reply("⏳ Downloading image...")
+async def handle_upscale(client, message):
+    msg = await message.reply("🔄 Processing...")
     
     try:
         # Download image
-        image_path = await message.download()
+        img_path = await message.download()
         
-        await msg.edit("⚡ Processing image (4x upscale)...")
+        # Get processed image URL
+        download_url = automate_iloveimg(os.path.abspath(img_path))
         
-        # Process image through iloveimg
-        download_url = process_image(image_path)
-        
-        await msg.edit("📤 Uploading enhanced image...")
-        
-        # Download processed image
-        response = requests.get(download_url)
-        output_path = f"processed_{message.photo.file_id}.webp"
-        with open(output_path, "wb") as f:
-            f.write(response.content)
-        
-        # Send result
+        # Upload to Telegram
         await message.reply_document(
-            document=output_path,
-            caption="✅ Image upscaled 4x using iloveimg.com"
+            document=download_url,
+            caption="✅ 4x Upscaled via iloveimg.com"
         )
         
-        # Cleanup
-        os.remove(image_path)
-        os.remove(output_path)
-        await msg.delete()
-    
     except Exception as e:
         await msg.edit(f"❌ Error: {str(e)}")
-        if os.path.exists(image_path):
-            os.remove(image_path)
+    finally:
+        if os.path.exists(img_path):
+            os.remove(img_path)
 
 if __name__ == "__main__":
-    print("Bot started...")
     app.run()
