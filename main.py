@@ -1,12 +1,11 @@
 import os
 import time
 from pyrogram import Client, filters
-from selenium import webdriver
+import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-# Configure Pyrogram Bot
 app = Client(
     "iloveimg_bot",
     api_id=os.environ["API_ID"],
@@ -14,38 +13,51 @@ app = Client(
     bot_token=os.environ["BOT_TOKEN"]
 )
 
-# Configure Selenium (Koyeb needs headless setup)
-CHROME_OPTIONS = webdriver.ChromeOptions()
-CHROME_OPTIONS.add_argument("--headless")
-CHROME_OPTIONS.add_argument("--disable-gpu")
-CHROME_OPTIONS.add_argument("--no-sandbox")
+def get_chrome_options():
+    options = uc.ChromeOptions()
+    options.add_argument("--headless=new")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--window-size=1920,1080")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--remote-debugging-port=9222")
+    return options
 
-def automate_iloveimg(image_path: str):
-    driver = webdriver.Chrome(options=CHROME_OPTIONS)
+def automate_iloveimg(image_path):
+    driver = uc.Chrome(options=get_chrome_options(), version_main=114)
     try:
         driver.get("https://www.iloveimg.com/upscale-image")
         
+        # Accept cookies
+        try:
+            WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.ID, "ez-accept-all"))
+            ).click()
+        except:
+            pass
+
         # Upload image
-        upload_btn = WebDriverWait(driver, 20).until(
+        WebDriverWait(driver, 20).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "input[type='file']"))
-        )
-        upload_btn.send_keys(image_path)
-        
-        # Select 4x option
+        ).send_keys(image_path)
+
+        # Select 4x upscale
         WebDriverWait(driver, 20).until(
             EC.element_to_be_clickable((By.XPATH, "//button[contains(.,'4×')]"))
         ).click()
-        
+
         # Start processing
         WebDriverWait(driver, 20).until(
             EC.element_to_be_clickable((By.XPATH, "//button[contains(.,'Upscale Image')]"))
         ).click()
+
+        # Wait for download link
+        download_link = WebDriverWait(driver, 300).until(
+            EC.presence_of_element_located((By.XPATH, "//a[contains(@class, 'downloader')]"))
+        ).get_attribute("href")
         
-        # Wait for download button
-        download_btn = WebDriverWait(driver, 120).until(
-            EC.element_to_be_clickable((By.XPATH, "//a[contains(.,'Download')]"))
-        )
-        return download_btn.get_attribute("href")
+        return download_link
     finally:
         driver.quit()
 
