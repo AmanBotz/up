@@ -1,10 +1,12 @@
+# main.py
 import os
-import time
+import requests
 from pyrogram import Client, filters
-import undetected_chromedriver as uc
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
 
 app = Client(
     "iloveimg_bot",
@@ -13,16 +15,23 @@ app = Client(
     bot_token=os.environ["BOT_TOKEN"]
 )
 
+# Configure Chrome options
 def get_chrome_options():
-    options = uc.ChromeOptions()
+    options = webdriver.ChromeOptions()
     options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1920,1080")
-    options.add_argument("--disable-extensions")
-    options.add_argument("--remote-debugging-port=9222")
     return options
+
+# Configure Chrome driver
+def get_chrome_driver():
+    return webdriver.Chrome(
+        service=Service("/usr/bin/chromedriver"),
+        options=get_chrome_options()
+    )
+
 
 def automate_iloveimg(image_path):
     driver = uc.Chrome(options=get_chrome_options(), version_main=114)
